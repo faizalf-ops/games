@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tetris V2 Fixed</title>
+<style>
+  body   { background:#111; color:white; font-family:Arial; display:flex; justify-content:center; margin-top:20px; }
+  #wrapper { display:flex; flex-direction:column; }
+  canvas { background:#000; border:3px solid #555; }
+</style>
+</head>
+<body>
+  <div id="wrapper">
+    <h2>Tetris V2</h2>
+    <p>Skor: <span id="score">0</span></p>
+    <p>Level: <span id="level">1</span></p>
+    <p>Press P to Pause</p>
+    <canvas id="tetris" width="240" height="400"></canvas>
+  </div>
+
+<script>
+const canvas = document.getElementById("tetris");
+const ctx = canvas.getContext("2d");
+ctx.scale(20, 20);
+
+// COLORS
+const colors = [null, "cyan", "yellow", "orange", "blue", "purple", "green", "red"];
+
+// PAUSE
+let paused = false;
+function togglePause() { paused = !paused; }
+
+// MATRIX
+function createMatrix(w, h) {
+  const m = [];
+  while (h--) m.push(new Array(w).fill(0));
+  return m;
+}
+
+// PIECES
+function createPiece(type) {
+  switch (type) {
+    case "T": return [[0,0,0],[1,1,1],[0,1,0]];
+    case "O": return [[2,2],[2,2]];
+    case "L": return [[0,0,3],[3,3,3],[0,0,0]];
+    case "J": return [[4,0,0],[4,4,4],[0,0,0]];
+    case "I": return [[0,0,0,0],[5,5,5,5],[0,0,0,0],[0,0,0,0]];
+    case "S": return [[0,6,6],[6,6,0],[0,0,0]];
+    case "Z": return [[7,7,0],[0,7,7],[0,0,0]];
+  }
+}
+
+// DRAW
+function drawMatrix(matrix, offset) {
+  matrix.forEach((row,y)=>{
+    row.forEach((v,x)=>{
+      if (v !== 0) {
+        ctx.fillStyle = colors[v];
+        ctx.fillRect(x + offset.x, y + offset.y, 1, 1);
+      }
+    });
+  });
+}
+
+function draw() {
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  drawMatrix(arena,{x:0,y:0});
+  drawMatrix(player.matrix,player.pos);
+}
+
+// COLLISION
+function collide(arena, player) {
+  const m = player.matrix;
+  const o = player.pos;
+  for (let y=0; y<m.length; y++) {
+    for (let x=0; x<m[y].length; x++) {
+      if (m[y][x] !== 0 && (arena[y+o.y] && arena[y+o.y][x+o.x]) !== 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// MERGE
+function merge(arena, player) {
+  player.matrix.forEach((row,y)=>{
+    row.forEach((v,x)=>{
+      if (v !== 0) arena[y+player.pos.y][x+player.pos.x] = v;
+    });
+  });
+}
+
+// ROTATE
+function rotate(matrix, dir) {
+  for (let y=0; y<matrix.length; y++) {
+    for (let x=0; x<y; x++) {
+      [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+    }
+  }
+  if (dir > 0) matrix.forEach(r => r.reverse());
+  else matrix.reverse();
+}
+
+function playerRotate(dir) {
+  const pos = player.pos.x;
+  rotate(player.matrix, dir);
+  let offset = 1;
+  while (collide(arena, player)) {
+    player.pos.x += offset;
+    offset = -(offset + (offset > 0 ? 1 : -1));
+    if (Math.abs(offset) > player.matrix[0].length) {
+      rotate(player.matrix, -dir);
+      player.pos.x = pos;
+      return;
+    }
+  }
+}
+
+// CLEAR LINE
+function arenaSweep() {
+  let rowCount = 1;
+  for (let y = arena.length-1; y > 0; y--) {
+    if (arena[y].every(v => v !== 0)) {
+      arena.splice(y,1);
+      arena.unshift(new Array(12).fill(0));
+      player.score += rowCount * 100;
+      rowCount *= 2;
+    }
+  }
+  updateScore();
+}
+
+// RESET PLAYER
+function playerReset() {
+  const pieces = "TJLOISZ";
+  player.matrix = createPiece(pieces[Math.random()*pieces.length|0]);
+  player.pos.y = 0;
+  player.pos.x = (arena[0].length/2 | 0) - (player.matrix[0].length/2 | 0);
+
+  if (collide(arena,player)) {
+    arena.forEach(row => row.fill(0));
+    player.score = 0;
+    player.level = 1;
+    dropInterval = 1000;
+    updateScore();
+  }
+}
+
+// DROP
+function playerDrop() {
+  player.pos.y++;
+  if (collide(arena,player)) {
+    player.pos.y--;
+    merge(arena,player);
+    arenaSweep();
+    playerReset();
+
+    if (player.score >= player.level * 500) {
+      player.level++;
+      dropInterval = Math.max(150, dropInterval - 100);
+      updateScore();
+    }
+  }
+  dropCounter = 0;
+}
+
+// UPDATE
+let dropCounter = 0;
+let lastTime = 0;
+let dropInterval = 1000;
+
+function update(time = 0) {
+  const delta = time - lastTime;
+  lastTime = time;
+
+  if (!paused) {
+    dropCounter += delta;
+    if (dropCounter > dropInterval) playerDrop();
+    draw();
+  }
+
+  requestAnimationFrame(update);
+}
+
+// MOVE with WALL CHECK
+function movePlayer(dir) {
+  player.pos.x += dir;
+  if (collide(arena, player)) player.pos.x -= dir;
+}
+
+// INPUT
+const keys = {};
+document.addEventListener("keydown", e => {
+  if (e.key === "p") togglePause();
+  if (e.key === "ArrowLeft") movePlayer(-1);
+  if (e.key === "ArrowRight") movePlayer(1);
+  if (e.key === "ArrowDown") playerDrop();
+  if (e.key === "ArrowUp") playerRotate(-1);
+});
+
+// SCORE UI
+function updateScore() {
+  document.getElementById("score").textContent = player.score;
+  document.getElementById("level").textContent = player.level;
+}
+
+// INIT
+const arena = createMatrix(12,20);
+const player = {pos:{x:0,y:0}, matrix:null, score:0, level:1};
+playerReset();
+update();
+</script>
+</body>
+</html>

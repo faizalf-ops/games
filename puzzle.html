@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Puzzle Upload (Fixed)</title>
+<style>
+  body {
+        font-family: Arial;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-top: 20px;
+        background: #f2f2f2;
+    }
+  #controls { margin:12px 0; display:flex; gap:10px; }
+  #board {
+    display:grid;
+    gap:2px;
+    background:#222;
+    box-shadow:0 4px 12px rgba(0,0,0,0.2);
+  }
+  .tile{
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    cursor:pointer;
+  }
+  .tile.empty{
+    background:#222;
+    cursor:default;
+  }
+</style>
+</head>
+<body>
+
+<h2>Puzzle</h2>
+
+<input type="file" id="imgUpload" accept="image/*">
+
+<div id="controls">
+  <label>Grid:
+    <select id="gridSelect">
+      <option value="3">3 × 3</option>
+      <option value="4">4 × 4</option>
+    </select>
+  </label>
+  <button id="shuffleBtn">Acak</button>
+  <button id="resetBtn">Reset</button>
+</div>
+
+<div id="board"></div>
+
+<script>
+/* global vars */
+let rows = 3, cols = 3;
+let boardSize = 480; 
+let imageSrc = null;
+let pieces = [];
+let emptyIndex = 0;
+
+const board = document.getElementById("board");
+const imgUpload = document.getElementById("imgUpload");
+const gridSelect = document.getElementById("gridSelect");
+const shuffleBtn = document.getElementById("shuffleBtn");
+const resetBtn = document.getElementById("resetBtn");
+
+/* =======================
+   1. Hitung board perfect 
+   ======================= */
+function calculateBoardSize() {
+    let maxSize = 480;
+    let cellSize = Math.floor(maxSize / rows);
+    return cellSize * rows;  // pixel-perfect
+}
+
+/* =======================
+   2. Build Model Pieces
+   ======================= */
+function buildPiecesModel() {
+    pieces = [];
+    const total = rows * cols;
+    emptyIndex = total - 1;
+
+    const tileW = boardSize / cols;
+    const tileH = boardSize / rows;
+
+    for (let i = 0; i < total; i++) {
+        const r = Math.floor(i / cols);
+        const c = i % cols;
+        pieces.push({
+            isEmpty: i === emptyIndex,
+            bgX: -Math.round(c * tileW),
+            bgY: -Math.round(r * tileH)
+        });
+    }
+}
+
+/* =======================
+   3. Render Tiles
+   ======================= */
+function renderBoard() {
+    board.innerHTML = "";
+    board.style.width = boardSize + "px";
+    board.style.height = boardSize + "px";
+    board.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    board.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
+    const tileW = boardSize / cols;
+    const tileH = boardSize / rows;
+
+    pieces.forEach((p, index) => {
+        let div = document.createElement("div");
+        div.className = "tile";
+        div.style.width = tileW + "px";
+        div.style.height = tileH + "px";
+
+        if (!p.isEmpty) {
+            div.style.backgroundImage = `url(${imageSrc})`;
+            div.style.backgroundSize = `${boardSize}px ${boardSize}px`;
+            div.style.backgroundPosition = `${p.bgX}px ${p.bgY}px`;
+            div.addEventListener("click", () => onTileClick(index));
+        } else {
+            div.classList.add("empty");
+        }
+
+        board.appendChild(div);
+    });
+}
+
+/* =======================
+   4. Tile Click Logic
+   ======================= */
+function onTileClick(index) {
+    if (isAdjacent(index, emptyIndex)) {
+        swap(index, emptyIndex);
+        emptyIndex = index;
+        renderBoard();
+    }
+}
+
+function isAdjacent(i1, i2) {
+    const r1 = Math.floor(i1 / cols), c1 = i1 % cols;
+    const r2 = Math.floor(i2 / cols), c2 = i2 % cols;
+    return Math.abs(r1 - r2) + Math.abs(c1 - c2) === 1;
+}
+
+function swap(i1, i2) {
+    let t = pieces[i1];
+    pieces[i1] = pieces[i2];
+    pieces[i2] = t;
+}
+
+/* =======================
+   5. Shuffle
+   ======================= */
+function shufflePuzzle() {
+    for (let i = 0; i < 200; i++) {
+        let moves = [];
+        if (emptyIndex - cols >= 0) moves.push(emptyIndex - cols);
+        if (emptyIndex + cols < rows * cols) moves.push(emptyIndex + cols);
+        if (emptyIndex % cols !== 0) moves.push(emptyIndex - 1);
+        if (emptyIndex % cols !== cols - 1) moves.push(emptyIndex + 1);
+
+        const r = moves[Math.floor(Math.random() * moves.length)];
+        swap(r, emptyIndex);
+        emptyIndex = r;
+    }
+    renderBoard();
+}
+
+/* =======================
+   6. Load Image
+   ======================= */
+function loadImage() {
+    if (!imageSrc) return;
+    boardSize = calculateBoardSize();   // FIX PENTING
+    buildPiecesModel();
+    renderBoard();
+}
+
+/* =======================
+   7. Event Listeners
+   ======================= */
+imgUpload.addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+        imageSrc = ev.target.result;
+        loadImage();
+    };
+    reader.readAsDataURL(file);
+});
+
+gridSelect.addEventListener("change", e => {
+    rows = cols = Number(e.target.value);
+    boardSize = calculateBoardSize();   // FIX PENTING
+    loadImage();
+});
+
+shuffleBtn.addEventListener("click", () => {
+    if (!imageSrc) return alert("Upload gambar dulu.");
+    shufflePuzzle();
+});
+
+resetBtn.addEventListener("click", loadImage);
+
+/* Init (tanpa gambar) */
+loadImage();
+</script>
+
+</body>
+</html>
